@@ -1,0 +1,66 @@
+# Haskell / Cabal / Stack build artifacts
+/dist/
+/dist-*/
+/dist-newstyle/
+/.stack-work/
+
+# Cabal sandbox (legacy)
+.cabal-sandbox/
+.cabal-sandbox/*
+cabal.sandbox.config
+
+# Local cabal configuration & solver output
+cabal.project.local
+cabal.project.local~
+*.cabal.lock
+
+# GHC compilation artifacts
+*.hi
+*.hie
+*.o
+*.dyn_o
+*.dyn_hi
+
+# GHC environment files
+.ghc.environment.*
+
+# Executables & binaries (keep if you want to commit release builds)
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Archives and logs
+*.tar.gz
+*.zip
+*.log
+
+# Profiling & coverage
+*.prof
+*.hp
+*.eventlog
+*.tix
+
+# Editor / tooling
+/.vscode/
+/.idea/
+*.swp
+*~
+
+# Direnv / environment overrides
+/.direnv/
+
+# Ghcid temp
+.ghcid
+
+# HLS / diagnostics caches
+/.cache/
+
+# OS junk
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+.DS_Store
+
+# Misc
+stack.yaml.lock
