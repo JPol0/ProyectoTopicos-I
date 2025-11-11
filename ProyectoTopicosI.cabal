@@ -15,6 +15,9 @@ executable ProyectoTopicosI
     import:           warnings
     main-is:          Main.hs
     build-depends:    base ^>=4.18.3.0,
-                        threepenny-gui >=0.9
-    hs-source-dirs:   app
+                      containers,
+                      threepenny-gui >=0.9,
+                      random >=1.2 && <1.4
+    hs-source-dirs:   app, src
+    other-modules:    Life
     default-language: GHC2021
