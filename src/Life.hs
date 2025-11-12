@@ -4,7 +4,12 @@ module Life (
   stepUniverse,
   -- Versión sencilla con bordes toroidales (envuelve por los extremos)
   stepUniverseToroidal,
-  glider, block, toMatrix
+  -- Stream perezoso de generaciones
+  generaciones,
+  -- Patrones predefinidos
+  glider, block, blinker, toad, beacon, lwss, gliderGun,
+  -- Funciones de utilidad
+  toMatrix, trasladar
 ) where
 
 import Data.Set (Set)
@@ -84,3 +89,48 @@ glider = fromList [(1,0),(2,1),(0,2),(1,2),(2,2)]
 toMatrix :: (Int,Int) -> (Int,Int) -> Universe -> [[Bool]]
 toMatrix (minX,maxX) (minY,maxY) universo =
     [ [ S.member (x,y) universo | x <- [minX..maxX] ] | y <- [minY..maxY] ]
+
+-- | Genera un stream perezoso (lista infinita) de generaciones a partir de un universo inicial.
+generaciones :: Universe -> [Universe]
+generaciones u = u : generaciones (stepUniverse u)
+
+-- | Desplaza un patrón por un vector (dx,dy)
+trasladar :: (Int, Int) -> Universe -> Universe
+trasladar (dx, dy) = S.mapMonotonic (\(x,y) -> (x + dx, y + dy))
+
+-- ============================================
+-- Patrones predefinidos
+-- ============================================
+
+-- | Parpadeador (Blinker) - Oscilador de período 2
+blinker :: Universe
+blinker = fromList [(1,0), (1,1), (1,2)]
+
+-- | Sapo (Toad) - Oscilador de período 2
+toad :: Universe
+toad = fromList [(1,1), (2,1), (3,1), (0,2), (1,2), (2,2)]
+
+-- | Faro (Beacon) - Oscilador de período 2
+beacon :: Universe
+beacon = fromList [(0,0), (1,0), (0,1), (3,2), (2,3), (3,3)]
+
+-- | Nave espacial ligera (Lightweight Spaceship) - Período 4, se mueve en diagonal
+lwss :: Universe
+lwss = fromList [(1,0), (2,0), (0,1), (0,2), (0,3), (1,3), (2,3), (3,1), (3,3)]
+
+-- | Cañón de planeadores (Gosper Glider Gun) - Patrón que genera planeadores
+gliderGun :: Universe
+gliderGun = fromList $ 
+  [(1,5),(2,5),(1,6),(2,6),  -- Bloque izquierdo
+   (11,5),(11,6),(11,7),      -- Caja con muesca
+   (12,4),(12,8),
+   (13,3),(14,3),(13,9),(14,9),
+   (15,6),
+   (16,4),(16,8),
+   (17,5),(17,6),(17,7),
+   (18,6),
+   (21,3),(21,4),(21,5),      -- Bloque derecho
+   (22,3),(22,4),(22,5),
+   (23,2),(23,6),
+   (25,1),(25,2),(25,6),(25,7),
+   (35,3),(35,4),(36,3),(36,4)]  -- Bloque final

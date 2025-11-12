@@ -3,10 +3,11 @@ module Main where
 
 import Graphics.UI.Threepenny.Core
 import qualified Graphics.UI.Threepenny as UI
-import Control.Monad (void, zipWithM_)
+import Control.Monad (void, zipWithM_, when, unless)
 import Data.IORef (IORef, newIORef, readIORef, writeIORef)
 import qualified Data.Set as S
-import Life (Universe, glider, stepUniverseToroidal, toMatrix)
+import Life (Universe, glider, block, blinker, toad, beacon, lwss, gliderGun, 
+             stepUniverseToroidal, toMatrix, generaciones, trasladar)
 import System.Random (randomRIO)
 
 -- | Punto de entrada de la aplicación.
@@ -67,12 +68,48 @@ setup ventana = do
               ]
             ) celdas vivos
 
+  -- Lista de patrones disponibles
+  let patronesDisponibles =
+        [ ("Glider", glider)
+        , ("Block", block)
+        , ("Blinker", blinker)
+        , ("Toad", toad)
+        , ("Beacon", beacon)
+        , ("Nave Ligera", lwss)
+        , ("Cañón de Planeadores", gliderGun)
+        ]
+  
+  -- Referencia para el stream de generaciones
+  refGeneraciones <- liftIO (newIORef (generaciones universoInicial))
+  refPausado <- liftIO (newIORef True)  -- Comenzar pausado
+  
+  -- Función para avanzar a la siguiente generación
+  let avanzarGeneracion = do
+        gs <- liftIO (readIORef refGeneraciones)
+        case gs of
+          (u:us) -> do
+            liftIO (writeIORef refGeneraciones us)
+            liftIO (writeIORef refUniverso u)
+            renderizar u
+          [] -> return ()  -- No debería ocurrir
+  
   -- Controles: botones de iniciar, pausar, avanzar un paso, reiniciar y aleatorio
   btnIniciar <- UI.button #+ [string "Iniciar"]
   btnPausar  <- UI.button #+ [string "Pausar"]
   btnPaso    <- UI.button #+ [string "Paso"]
   btnReiniciar <- UI.button #+ [string "Reiniciar"]
   btnAleatorio <- UI.button #+ [string "Aleatorio"]
+  
+  -- Selector de patrones
+  lblPatron <- UI.span # set text "Patrón: "
+  selectorPatron <- UI.select
+    # set (UI.attr "style") "padding: 5px; margin: 5px;"
+  
+  -- Llenar el selector con los patrones disponibles
+  opciones <- mapM (\(i, (nombre, _)) -> 
+    UI.option # set text nombre # set (UI.attr "value") (show i)
+    ) (zip [0..] patronesDisponibles)
+  void $ element selectorPatron # set UI.children opciones
 
   -- Temporizador para avanzar automáticamente cada cierto intervalo (ms)
   let intervaloInicial = 150  -- valor por defecto del intervalo en milisegundos
@@ -98,12 +135,29 @@ setup ventana = do
                 ]
 
   -- Construcción del layout: título, fila con botones y el área de visualización
-  void $ element contenedor #+ [
-          UI.h1 #+ [string "Juego de la Vida"],
-    row [element btnIniciar, element btnPausar, element btnPaso, element btnReiniciar, element btnAleatorio],
-    row [element etiquetaVelocidad, element sliderVelocidad],
-          element rejilla
-        ]
+  titulo <- UI.h1 # set text "Juego de la Vida de Conway"
+  filaPatron <- UI.div # set style [("display", "flex"), ("gap", "8px"), ("align-items", "center")] #+
+    [ element lblPatron
+    , element selectorPatron
+    ]
+  filaBotones <- UI.div # set style [("display", "flex"), ("gap", "8px")] #+
+    [ element btnIniciar
+    , element btnPausar
+    , element btnPaso
+    , element btnReiniciar
+    , element btnAleatorio
+    ]
+  filaVelocidad <- UI.div # set style [("display", "flex"), ("align-items", "center"), ("gap", "10px")] #+
+    [ element etiquetaVelocidad
+    , element sliderVelocidad
+    ]
+  void $ element contenedor #+
+    [ element titulo
+    , element filaPatron
+    , element filaBotones
+    , element filaVelocidad
+    , element rejilla
+    ]
 
   -- Agregamos el contenedor centrado al body de la ventana
   void $ getBody ventana #+ [element contenedor]
@@ -111,47 +165,68 @@ setup ventana = do
   -- Render inicial (pinta el universo actual)
   void $ levantarUIRef refUniverso renderizar
 
-  -- Eventos de los botones
-  on UI.click btnIniciar $ \_ -> UI.start temporizador
-  on UI.click btnPausar  $ \_ -> UI.stop  temporizador
-  on UI.click btnPaso    $ \_ -> do
-    -- Avanza una generación y vuelve a dibujar
-    liftIO $ modificarRef refUniverso (stepUniverseToroidal anchoVista altoVista)
-    levantarUIRef refUniverso renderizar
-
-  on UI.click btnReiniciar $ \_ -> do
-    -- Vuelve al patrón inicial definido más abajo y re-renderiza
-    liftIO $ writeIORef refUniverso universoInicial
-    levantarUIRef refUniverso renderizar
-
-  on UI.click btnAleatorio $ \_ -> do
-    -- Genera un universo aleatorio con una densidad base (25% vivas)
-    uRand <- liftIO $ universoAleatorio anchoVista altoVista 0.25
-    liftIO $ writeIORef refUniverso uRand
-    levantarUIRef refUniverso renderizar
-
   -- Función auxiliar para aplicar un nuevo intervalo al temporizador y actualizar la etiqueta
+  -- Nota: No podemos modificar el intervalo de un temporizador después de crearlo en Threepenny
+  -- Por ahora, solo actualizamos la etiqueta. El intervalo se establece al crear el temporizador.
   let aplicarIntervalo ms = do
         void $ element etiquetaVelocidad # set text ("Intervalo: " ++ show ms ++ " ms")
-        void $ return temporizador # set UI.interval ms
+        -- void $ temporizador # set UI.interval ms  -- No funciona: set UI.interval solo funciona al crear el timer
 
-  -- Evento del slider: al cambiar el valor (evento 'change')
-  on UI.valueChange sliderVelocidad $ \valTexto -> do
-    case reads valTexto :: [(Int, String)] of
-      [(ms, "")] -> aplicarIntervalo ms
-      _           -> return ()
+  -- Función para reiniciar la simulación con el patrón seleccionado
+  let reiniciarConPatron = do
+        indiceSeleccionado <- get value selectorPatron
+        let (_, patron) = patronesDisponibles !! read indiceSeleccionado
+        liftIO $ do
+          writeIORef refUniverso patron
+          writeIORef refGeneraciones (generaciones patron)
+          writeIORef refPausado True
+        renderizar patron
+
+  -- Eventos de los botones
+  void $ btnIniciar # on UI.click $ \_ -> do
+    void $ temporizador # UI.start
+    liftIO $ writeIORef refPausado False
+    return ()
+
+  void $ btnPausar # on UI.click $ \_ -> do
+    void $ temporizador # UI.stop
+    liftIO $ writeIORef refPausado True
+    return ()
+
+  void $ btnPaso # on UI.click $ \_ -> do
+    pausado <- liftIO $ readIORef refPausado
+    when pausado $ do
+      avanzarGeneracion
+
+  void $ btnReiniciar # on UI.click $ \_ -> do
+    reiniciarConPatron
+    return ()
+
+  void $ btnAleatorio # on UI.click $ \_ -> do
+    u <- liftIO $ universoAleatorio anchoVista altoVista 0.2
+    liftIO $ do
+      writeIORef refUniverso u
+      writeIORef refGeneraciones (generaciones u)
+      writeIORef refPausado True
+    renderizar u
+
+  -- Avanzar automáticamente cuando el temporizador se dispara
+  void $ temporizador # on UI.tick $ \_ -> do
+    pausado <- liftIO $ readIORef refPausado
+    unless pausado $ do
+      avanzarGeneracion
+
+  -- Cambiar la velocidad con el slider
+  void $ sliderVelocidad # on UI.valueChange $ \n -> do
+    let ms = read n :: Int
+    aplicarIntervalo ms
 
   -- Evento del slider en tiempo real (evento DOM 'input') para actualizar mientras se arrastra
-  on (domEvent "input") sliderVelocidad $ \_ -> do
+  void $ sliderVelocidad # on (domEvent "input") $ \_ -> do
     valTexto <- get UI.value sliderVelocidad
     case reads valTexto :: [(Int, String)] of
       [(ms, "")] -> aplicarIntervalo ms
       _           -> return ()
-
-  -- Evento del temporizador: avanza automáticamente y re-renderiza
-  on UI.tick temporizador $ \_ -> do
-    liftIO $ modificarRef refUniverso (stepUniverseToroidal anchoVista altoVista)
-    levantarUIRef refUniverso renderizar
 
   where
   -- Dimensiones de la ventana de visualización (en celdas)
@@ -189,9 +264,6 @@ setup ventana = do
   levantarUIRef :: IORef Universe -> (Universe -> UI b) -> UI b
   levantarUIRef referencia f = liftIO (readIORef referencia) >>= f
 
-  -- Trasladar (desplazar) un universo por un vector (dx,dy)
-  trasladar :: (Int,Int) -> Universe -> Universe
-  trasladar (dx,dy) = S.mapMonotonic (\(x,y) -> (x+dx, y+dy))
 
   -- Construye un universo aleatorio dentro de un área de ancho x alto.
   -- 'densidad' es la probabilidad de que una celda nazca viva (0.0 a 1.0).
