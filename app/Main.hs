@@ -35,7 +35,7 @@ main = startGUI defaultConfig {jsPort = Just 8023} setup
 setup :: Window -> UI ()
 setup ventana = do
   -- Título de la pestaña/navegador
-  void $ return ventana # set UI.title "Conway - Threepenny"
+  void $ return ventana # set UI.title "El juego de la vida"
 
   -- Estado de la simulación: guardamos el universo actual en un IORef
   refUniverso <- liftIO (newIORef universoInicial)
