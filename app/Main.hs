@@ -58,10 +58,14 @@ setup ventana = do
   -- Pre-creamos todas las celdas una sola vez y luego sólo actualizamos el color
   let totalCeldas = anchoVista * altoVista
       px n = show n ++ "px"
+  -- Referencia para el stream de generaciones (moved arriba para uso en handlers)
+  refGeneraciones <- liftIO (newIORef (generacionesToroidales anchoVista altoVista universoInicial))
+  refPausado <- liftIO (newIORef True) -- Comenzar pausado
+
   celdas <-
     mapM
-      ( \_ ->
-          UI.div
+      ( \i -> do
+          cel <- UI.div
             # set
               style
               [ ("width", px tamCelda),
@@ -70,8 +74,27 @@ setup ventana = do
                 ("border", "0.2px solid #f2f0e7"),
                 ("background-color", colorMuerta)
               ]
+          -- Al hacer click en una celda alternamos su estado vivo/muerto
+          void $ on UI.click cel $ \_ -> do
+            let x = minXVista + (i `mod` anchoVista)
+                y = minYVista + (i `div` anchoVista)
+                coord = (x, y)
+            u <- liftIO $ readIORef refUniverso
+            let u' = if S.member coord u then S.delete coord u else S.insert coord u
+            -- actualizar estado (IO) y marcar en pausa
+            liftIO $ do
+              writeIORef refUniverso u'
+              writeIORef refGeneraciones (generacionesToroidales anchoVista altoVista u')
+              writeIORef refPausado True
+            -- actualizar solo la celda clickeada en el DOM para evitar dependencia de 'renderizar'
+            void $ element cel # set style [ ("background-color", if S.member coord u' then colorViva else colorMuerta)
+                                           , ("width", px tamCelda)
+                                           , ("height", px tamCelda)
+                                           , ("box-sizing", "border-box")
+                                           , ("border", "0.2px solid #f2f0e7")]
+          return cel
       )
-      [1 .. totalCeldas]
+      [0 .. totalCeldas - 1]
   void $ element rejilla # set UI.children celdas
 
   -- Renderiza el universo coloreando las celdas ya existentes
@@ -113,9 +136,7 @@ setup ventana = do
   -- Temporizador para avanzar automáticamente cada cierto intervalo (ms)
   let intervaloInicial = 150 -- valor por defecto del intervalo en milisegundos
 
-  -- Referencia para el stream de generaciones
-  refGeneraciones <- liftIO (newIORef (generacionesToroidales anchoVista altoVista universoInicial))
-  refPausado <- liftIO (newIORef True) -- Comenzar pausado
+  
 
   -- Función para avanzar a la siguiente generación
   let avanzarGeneracion = do
