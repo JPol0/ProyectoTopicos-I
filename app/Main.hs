@@ -249,11 +249,34 @@ setup ventana = do
   let reiniciarConPatron = do
         indiceSeleccionado <- get value selectorPatron
         let (_, patron) = patronesDisponibles !! read indiceSeleccionado
-        liftIO $ do
-          writeIORef refUniverso patron
-          writeIORef refGeneraciones (generacionesToroidales anchoVista altoVista patron)
-          writeIORef refPausado True
-        renderizar patron
+        
+        let coords = S.toList patron
+        if null coords
+          then do
+            liftIO $ do
+              writeIORef refUniverso patron
+              writeIORef refGeneraciones (generacionesToroidales anchoVista altoVista patron)
+              writeIORef refPausado True
+            renderizar patron
+          else do
+            let xs = map fst coords
+                ys = map snd coords
+                minPX = minimum xs
+                minPY = minimum ys
+                patW = maximum xs - minPX + 1
+                patH = maximum ys - minPY + 1
+                maxX = max 0 (anchoVista - patW)
+                maxY = max 0 (altoVista - patH)
+            rx <- liftIO $ randomRIO (0, maxX)
+            ry <- liftIO $ randomRIO (0, maxY)
+            let dx = rx - minPX + minXVista
+                dy = ry - minPY + minYVista
+                patronPos = trasladar (dx, dy) patron
+            liftIO $ do
+              writeIORef refUniverso patronPos
+              writeIORef refGeneraciones (generacionesToroidales anchoVista altoVista patronPos)
+              writeIORef refPausado True
+            renderizar patronPos
 
   -- Eventos de los botones
   void $ btnIniciar # on UI.click $ \_ -> do
