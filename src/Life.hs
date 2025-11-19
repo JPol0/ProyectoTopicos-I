@@ -149,11 +149,9 @@ toad = fromList [(1, 1), (2, 1), (3, 1), (0, 2), (1, 2), (2, 2)]
 beacon :: Universe
 beacon = fromList [(0, 0), (1, 0), (0, 1), (3, 2), (2, 3), (3, 3)]
 
--- | Nave espacial ligera (Lightweight Spaceship) - Período 4, se mueve en diagonal
 lwss :: Universe
 lwss = fromList [(1, 0), (2, 0), (0, 1), (0, 2), (0, 3), (1, 3), (2, 3), (3, 1), (3, 3)]
 
--- | Cañón de planeadores (Gosper Glider Gun) - Patrón que genera planeadores
 gliderGun :: Universe
 gliderGun =
   fromList $
@@ -195,20 +193,89 @@ gliderGun =
       (36, 4) -- Bloque final
     ]
 
--- | Fumador (Puffer) – también conocido como "Switch engine".
--- Es un pequeño patrón que se mueve en diagonal y deja un rastro caótico a su paso.
--- Nota: Esta semilla puede necesitar espacio libre alrededor para evolucionar correctamente.
--- Orientación: diseñado para moverse hacia abajo-derecha (diagonal SE).
+-- | Subpatrones usados para construir el "Fumador (Puffer)".
+ganchoIzq :: Universe
+ganchoIzq =
+  fromList
+    [ (1, 0),
+      (2, 0),
+      (3, 0), -- techo
+      (0, 1), -- saliente izquierdo superior
+      (3, 1),
+      (3, 2),
+      (3, 3),
+      (3, 4),
+      (3, 5), -- columna
+      (2, 6) -- saliente inferior
+    ]
+
+ganchoDer :: Universe
+ganchoDer =
+  fromList
+    [ (0, 0),
+      (1, 0),
+      (2, 0), -- techo
+      (3, 1), -- saliente derecho superior
+      (0, 1),
+      (0, 2),
+      (0, 3), -- columna
+      (0, 4),
+      (0, 5),
+      (1, 6) -- saliente inferior
+    ]
+
+triangulo :: Universe
+triangulo =
+  fromList
+    [ (1, 0), -- pico
+      (0, 1),
+      (1, 1),
+      (2, 1), -- base de 3
+      (2, 2),
+      (0, 2),
+      (-1, 2)
+    ]
+
+trianguloDer :: Universe
+trianguloDer =
+  fromList
+    [ (1, 0), -- pico
+      (0, 1),
+      (1, 1),
+      (2, 1), -- base de 3
+      (0, 2),
+      (2, 2),
+      (3, 2)
+    ]
+
+bloqueMas :: Universe
+bloqueMas =
+  fromList
+    [ (0, 0), -- extra arriba-izq del bloque
+      (0, 1),
+      (1, 1),
+      (0, 2),
+      (1, 2) -- bloque 2x2
+    ]
+
+bloqueMasDer :: Universe
+bloqueMasDer =
+  fromList
+    [ (1, 0), -- extra arriba-izq del bloque
+      (0, 1),
+      (1, 1),
+      (0, 2),
+      (1, 2) -- bloque 2x2
+    ]
+
+-- | Fumador (Puffer) compuesto por 6 subpatrones posicionados para que
 fumador :: Universe
 fumador =
-  fromList
-    [ (0, 1),
-      (1, 2),
-      (2, 0),
-      (2, 1),
-      (3, 3),
-      (4, 0),
-      (4, 1),
-      (4, 2),
-      (5, 1)
+  S.unions
+    [ trasladar (0, 0) ganchoIzq,
+      trasladar (9, 0) triangulo,
+      trasladar (15, 0) trianguloDer,
+      trasladar (6, 4) bloqueMas,
+      trasladar (19, 4) bloqueMasDer,
+      trasladar (23, 0) ganchoDer
     ]
