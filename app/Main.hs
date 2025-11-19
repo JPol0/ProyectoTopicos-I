@@ -3,7 +3,7 @@
 module Main where
 
 import Control.Monad (unless, void, when, zipWithM_)
-import Data.IORef (IORef, newIORef, readIORef, writeIORef)
+import Data.IORef (IORef, modifyIORef', newIORef, readIORef, writeIORef)
 import Data.Set qualified as S
 import Graphics.UI.Threepenny qualified as UI
 import Graphics.UI.Threepenny.Core
@@ -61,19 +61,22 @@ setup ventana = do
   -- Referencia para el stream de generaciones (moved arriba para uso en handlers)
   refGeneraciones <- liftIO (newIORef (generacionesToroidales anchoVista altoVista universoInicial))
   refPausado <- liftIO (newIORef True) -- Comenzar pausado
+  -- Contador de generaciones para mostrar en la interfaz
+  refGeneracion <- liftIO (newIORef (0 :: Int))
 
   celdas <-
     mapM
       ( \i -> do
-          cel <- UI.div
-            # set
-              style
-              [ ("width", px tamCelda),
-                ("height", px tamCelda),
-                ("box-sizing", "border-box"),
-                ("border", "0.2px solid #f2f0e7"),
-                ("background-color", colorMuerta)
-              ]
+          cel <-
+            UI.div
+              # set
+                style
+                [ ("width", px tamCelda),
+                  ("height", px tamCelda),
+                  ("box-sizing", "border-box"),
+                  ("border", "0.2px solid #f2f0e7"),
+                  ("background-color", colorMuerta)
+                ]
           -- Al hacer click en una celda alternamos su estado vivo/muerto
           void $ on UI.click cel $ \_ -> do
             let x = minXVista + (i `mod` anchoVista)
@@ -87,11 +90,16 @@ setup ventana = do
               writeIORef refGeneraciones (generacionesToroidales anchoVista altoVista u')
               writeIORef refPausado True
             -- actualizar solo la celda clickeada en el DOM para evitar dependencia de 'renderizar'
-            void $ element cel # set style [ ("background-color", if S.member coord u' then colorViva else colorMuerta)
-                                           , ("width", px tamCelda)
-                                           , ("height", px tamCelda)
-                                           , ("box-sizing", "border-box")
-                                           , ("border", "0.2px solid #f2f0e7")]
+            void $
+              element cel
+                # set
+                  style
+                  [ ("background-color", if S.member coord u' then colorViva else colorMuerta),
+                    ("width", px tamCelda),
+                    ("height", px tamCelda),
+                    ("box-sizing", "border-box"),
+                    ("border", "0.2px solid #f2f0e7")
+                  ]
           return cel
       )
       [0 .. totalCeldas - 1]
@@ -114,7 +122,7 @@ setup ventana = do
                     [ ("width", px tamCelda),
                       ("height", px tamCelda),
                       ("box-sizing", "border-box"),
-                      ("border", "0.2px solid #f2f0e7"),
+                      ("border", "1px solid #333"),
                       ("background-color", if viva then colorViva else colorMuerta)
                     ]
           )
@@ -133,18 +141,23 @@ setup ventana = do
           ("Cañón de Planeadores", gliderGun)
         ]
 
+  -- Etiqueta de generación (se crea antes para poder actualizarla en avanzarGeneracion)
+  lblGeneracionTitulo <- UI.span # set text "Generación: "
+  lblGeneracionValor <- UI.span # set text "0"
+
   -- Temporizador para avanzar automáticamente cada cierto intervalo (ms)
   let intervaloInicial = 150 -- valor por defecto del intervalo en milisegundos
 
-  
-
-  -- Función para avanzar a la siguiente generación
+  -- Función para avanzar a la siguiente generación (actualiza contador y etiqueta)
   let avanzarGeneracion = do
         gs <- liftIO (readIORef refGeneraciones)
         case gs of
           (u : us) -> do
             liftIO (writeIORef refGeneraciones us)
             liftIO (writeIORef refUniverso u)
+            liftIO $ modifyIORef' refGeneracion (+ 1)
+            g <- liftIO (readIORef refGeneracion)
+            void $ element lblGeneracionValor # set text (show g)
             renderizar u
           [] -> return () -- No debería ocurrir
 
@@ -164,11 +177,39 @@ setup ventana = do
 
   -- Crear el temporizador inicial
   temporizadorInicial <- crearTemporizador intervaloInicial
-  btnIniciar <- UI.button #+ [string "Iniciar"]
-  btnPausar <- UI.button #+ [string "Pausar"]
-  btnPaso <- UI.button #+ [string "Paso"]
-  btnReiniciar <- UI.button #+ [string "Reiniciar"]
-  btnAleatorio <- UI.button #+ [string "Aleatorio"]
+  -- Estilos base para botones "suaves"
+  let estiloBotonBase =
+        [ ("background", "linear-gradient(180deg,#3a3f44,#2a2d30"),
+          ("color", "#f1f1f1"),
+          ("padding", "8px 14px"),
+          ("border", "1px solid #444"),
+          ("border-radius", "6px"),
+          ("font-size", "14px"),
+          ("letter-spacing", "0.5px"),
+          ("cursor", "pointer"),
+          ("transition", "background 160ms, transform 120ms, box-shadow 160ms"),
+          ("box-shadow", "0 2px 4px rgba(0,0,0,0.35)"),
+          ("user-select", "none")
+        ]
+      hoverJS = "this.style.background='#50565c'"
+      activeJS = "this.style.transform='scale(0.95)'"
+      leaveJS = "this.style.background='linear-gradient(180deg,#3a3f44,#2a2d30)';this.style.transform='scale(1)'"
+      mkBoton txt extraColor = do
+        b <-
+          UI.button
+            #+ [string txt]
+            # set style (estiloBotonBase ++ extraColor)
+            # set (UI.attr "onmouseenter") hoverJS
+            # set (UI.attr "onmousedown") activeJS
+            # set (UI.attr "onmouseleave") leaveJS
+            # set (UI.attr "onmouseup") "this.style.transform='scale(1)'"
+        pure b
+  btnIniciar <- mkBoton "Iniciar" [("background", "linear-gradient(180deg,#2e7d32,#1b5e20)")]
+  btnPausar <- mkBoton "Pausar" [("background", "linear-gradient(180deg,#c62828,#8e0000)")]
+  btnPaso <- mkBoton "Paso" [("background", "linear-gradient(180deg,#455a64,#263238)")]
+  btnReiniciar <- mkBoton "Reiniciar" [("background", "linear-gradient(180deg,#1565c0,#0d47a1)")]
+  btnAleatorio <- mkBoton "Aleatorio" [("background", "linear-gradient(180deg,#6a1b9a,#4a148c)")]
+  btnLimpiar <- mkBoton "Limpiar" [("background", "linear-gradient(180deg,#37474f,#21292e)")]
 
   -- Selector de patrones
   lblPatron <- UI.span # set text "Patrón: "
@@ -182,7 +223,7 @@ setup ventana = do
       ( \(i, (nombre, _)) ->
           UI.option # set text nombre # set (UI.attr "value") (show i)
       )
-      (zip [0 ..] patronesDisponibles)
+      (zip [0 :: Int ..] patronesDisponibles)
   void $ element selectorPatron # set UI.children opciones
 
   -- Slider para controlar la velocidad (intervalo). Mientras más pequeño el valor, más rápido.
@@ -206,7 +247,25 @@ setup ventana = do
           ("justify-content", "center"), -- centra verticalmente
           ("align-items", "center"), -- centra horizontalmente
           ("height", "100vh"),
-          ("gap", "12px")
+          ("gap", "16px"),
+          ("background", "#1e1e1e"),
+          ("color", "#eee"),
+          ("font-family", "Segoe UI, Arial, sans-serif")
+        ]
+
+  panel <-
+    UI.div
+      # set
+        style
+        [ ("display", "flex"),
+          ("flex-direction", "column"),
+          ("gap", "12px"),
+          ("background", "#242424"),
+          ("padding", "18px 22px"),
+          ("border-radius", "10px"),
+          ("box-shadow", "0 4px 18px rgba(0,0,0,0.35)"),
+          ("border", "1px solid #333"),
+          ("min-width", "720px")
         ]
 
   -- Construcción del layout: título, fila con botones y el área de visualización
@@ -224,7 +283,8 @@ setup ventana = do
            element btnPausar,
            element btnPaso,
            element btnReiniciar,
-           element btnAleatorio
+           element btnAleatorio,
+           element btnLimpiar
          ]
   filaVelocidad <-
     UI.div
@@ -234,11 +294,19 @@ setup ventana = do
          ]
   void $
     element contenedor
-      #+ [ element titulo,
-           element filaPatron,
-           element filaBotones,
-           element filaVelocidad,
-           element rejilla
+      #+ [ element panel
+             #+ [ element titulo,
+                  UI.div
+                    # set style [("display", "flex"), ("gap", "6px")]
+                    #+ [element lblGeneracionTitulo, element lblGeneracionValor],
+                  element filaPatron,
+                  element filaBotones,
+                  element filaVelocidad,
+                  UI.div
+                    # set style [("font-size", "12px"), ("opacity", "0.85")]
+                    #+ [string "Clic en una celda para alternar. Limpiar vacía el universo. Reiniciar coloca el patrón elegido aleatoriamente."],
+                  element rejilla
+                ]
          ]
 
   -- Agregamos el contenedor centrado al body de la ventana
@@ -266,11 +334,15 @@ setup ventana = do
             Just t -> void $ t # UI.start
             Nothing -> return ()
 
+  let actualizarGeneracionLabel = do
+        g <- liftIO $ readIORef refGeneracion
+        void $ element lblGeneracionValor # set text (show g)
+
   -- Función para reiniciar la simulación con el patrón seleccionado
   let reiniciarConPatron = do
         indiceSeleccionado <- get value selectorPatron
         let (_, patron) = patronesDisponibles !! read indiceSeleccionado
-        
+
         let coords = S.toList patron
         if null coords
           then do
@@ -278,6 +350,7 @@ setup ventana = do
               writeIORef refUniverso patron
               writeIORef refGeneraciones (generacionesToroidales anchoVista altoVista patron)
               writeIORef refPausado True
+              writeIORef refGeneracion 0
             renderizar patron
           else do
             let xs = map fst coords
@@ -297,7 +370,9 @@ setup ventana = do
               writeIORef refUniverso patronPos
               writeIORef refGeneraciones (generacionesToroidales anchoVista altoVista patronPos)
               writeIORef refPausado True
+              writeIORef refGeneracion 0
             renderizar patronPos
+        actualizarGeneracionLabel
 
   -- Eventos de los botones
   void $ btnIniciar # on UI.click $ \_ -> do
@@ -331,7 +406,19 @@ setup ventana = do
       writeIORef refUniverso u
       writeIORef refGeneraciones (generacionesToroidales anchoVista altoVista u)
       writeIORef refPausado True
+      writeIORef refGeneracion 0
     renderizar u
+    actualizarGeneracionLabel
+
+  void $ btnLimpiar # on UI.click $ \_ -> do
+    let vacio = S.empty
+    liftIO $ do
+      writeIORef refUniverso vacio
+      writeIORef refGeneraciones (generacionesToroidales anchoVista altoVista vacio)
+      writeIORef refPausado True
+      writeIORef refGeneracion 0
+    renderizar vacio
+    actualizarGeneracionLabel
 
   -- Cambiar la velocidad con el slider
   void $ sliderVelocidad # on UI.valueChange $ \n -> do
@@ -353,7 +440,7 @@ setup ventana = do
     tamCelda :: Int
     tamCelda = 14
     colorViva, colorMuerta :: String
-    colorViva = "#28a745"
+    colorViva = "#ffd600"
     colorMuerta = "#000000"
 
     -- Origen de la ventana de visualización (puede moverse en el futuro)
